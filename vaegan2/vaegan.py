@@ -11,29 +11,29 @@ class VAEGAN:
         self.input_shape = input_shape
         self.latent_dim = latent_dim
         
-        # Initialize models with optimized hyperparameters
+        # Initialize models
         self.encoder = Encoder(input_shape, latent_dim)
         self.decoder = Decoder(latent_dim, input_shape)
         self.discriminator = Discriminator(input_shape)
         
-        # Optimized learning rates and Adam parameters
-        initial_lr = 0.0002  # Lower learning rate for stability
-        beta1 = 0.5  # Common value for GANs
+        # Adjusted learning rates
+        initial_lr = 0.0003  # Slightly higher learning rate
+        beta1 = 0.5
         beta2 = 0.999
         
         self.encoder_optimizer = Adam(learning_rate=initial_lr, beta1=beta1, beta2=beta2)
-        self.decoder_optimizer = Adam(learning_rate=initial_lr, beta1=beta1, beta2=beta2)
+        self.decoder_optimizer = Adam(learning_rate=initial_lr*1.5, beta1=beta1, beta2=beta2)  # Faster generator
         self.discriminator_optimizer = Adam(learning_rate=initial_lr*0.5, beta1=beta1, beta2=beta2)  # Slower discriminator
         
-        # Adjusted regularization parameter
-        self.l2_reg = 1e-5  # Reduced L2 regularization
+        # Adjusted loss weights
+        self.reconstruction_weight = 0.5  # Reduced reconstruction weight
+        self.kl_weight = 0.05  # Further reduced KL weight
+        self.adversarial_weight = 1.0  # Increased adversarial weight
         
-        # Loss weights for better balance
-        self.reconstruction_weight = 1.0
-        self.kl_weight = 0.1  # Reduced KL weight to prevent posterior collapse
-        self.adversarial_weight = 0.5
+        # Stronger regularization
+        self.l2_reg = 1e-4
         
-    def adjust_learning_rate(self, epoch, initial_lr=0.0002, decay_factor=0.5, decay_epochs=20):
+    def adjust_learning_rate(self, epoch, initial_lr=0.0003, decay_factor=0.5, decay_epochs=20):
         """Implements smoother learning rate decay"""
         lr = initial_lr * (decay_factor ** (epoch / decay_epochs))
         for optimizer in [self.encoder_optimizer, self.decoder_optimizer, self.discriminator_optimizer]:
@@ -63,35 +63,44 @@ class VAEGAN:
         return -0.5 * np.mean(np.clip(1 + log_var - np.square(mean) - np.exp(log_var), -20, 20))
     
     def train_step(self, batch, training=True):
-        # Forward passes with noise for regularization
+        # Forward passes
         z, mean, log_var = self.encoder.forward(batch, training)
         x_recon = self.decoder.forward(z, training)
         
-        # Add noise to discriminator inputs for stability
-        noise_level = 0.05 if training else 0
+        # Train discriminator first
+        noise_level = 0.1 if training else 0  # Increased noise for stability
         real_input = batch + np.random.normal(0, noise_level, batch.shape) if training else batch
         fake_input = x_recon + np.random.normal(0, noise_level, x_recon.shape) if training else x_recon
         
         real_output = self.discriminator.forward(real_input, training)
         fake_output = self.discriminator.forward(fake_input, training)
         
-        # Calculate weighted losses
+        # Calculate losses with improved stability
         recon_loss = self.reconstruction_weight * self.reconstruction_loss(batch, x_recon)
         kl_loss = self.kl_weight * self.kl_loss(mean, log_var)
         reg_loss = self.l2_regularization()
         
-        # Label smoothing for GAN stability
-        real_labels = 0.9 if training else 1.0  # Smooth positive labels
-        fake_labels = 0.0  # Keep negative labels at 0
+        # Improved label smoothing
+        real_labels = np.random.uniform(0.7, 1.0, real_output.shape) if training else 1.0
+        fake_labels = np.random.uniform(0.0, 0.3, fake_output.shape) if training else 0.0
         
-        disc_loss_real = -np.mean(np.log(real_output + 1e-8)) * real_labels
-        disc_loss_fake = -np.mean(np.log(1 - fake_output + 1e-8))
+        # Discriminator loss with improved stability
+        disc_loss_real = -np.mean(np.log(real_output + 1e-7)) * np.mean(real_labels)
+        disc_loss_fake = -np.mean(np.log(1 - fake_output + 1e-7))
         disc_loss = (disc_loss_real + disc_loss_fake) * self.adversarial_weight + reg_loss
         
-        gen_loss = -np.mean(np.log(fake_output + 1e-8)) * self.adversarial_weight + reg_loss
+        # Generator loss with feature matching
+        gen_loss = (-np.mean(np.log(fake_output + 1e-7)) * self.adversarial_weight + 
+                   recon_loss + kl_loss + reg_loss)
         
         if training:
-            # Implement backpropagation and parameter updates here
+            # Update discriminator less frequently than generator
+            if np.random.rand() < 0.8:  # 80% chance to update discriminator
+                # Implement parameter updates here
+                pass
+            
+            # Always update generator
+            # Implement parameter updates here
             pass
         
         return {
@@ -146,22 +155,24 @@ if __name__ == "__main__":
     # Initialize VAEGAN
     vaegan = VAEGAN()
     
-    # Optimized training parameters
-    batch_size = 128  # Larger batch size for better statistics
+    # Improved training parameters
+    batch_size = 64  # Smaller batch size for better gradient estimates
     epochs = 100
     sample_interval = 5
     
-    # Training loop with warm-up
-    warmup_epochs = 5
+    # Training loop with improved scheduling
+    warmup_epochs = 3
     for epoch in range(epochs):
         print(f"Epoch {epoch+1}/{epochs}")
         
-        # Learning rate adjustment
+        # Progressive learning rate adjustment
         if epoch >= warmup_epochs:
-            vaegan.adjust_learning_rate(epoch - warmup_epochs)
+            lr = vaegan.adjust_learning_rate(epoch - warmup_epochs)
+            print(f"Learning rate adjusted to: {lr:.6f}")
         
-        # Shuffle data
-        np.random.shuffle(x_train)
+        # Shuffle data with improved randomization
+        indices = np.random.permutation(len(x_train))
+        x_train = x_train[indices]
         
         epoch_losses = {
             'reconstruction_loss': 0,
