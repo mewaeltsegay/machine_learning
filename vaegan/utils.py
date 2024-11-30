@@ -1,10 +1,12 @@
-import numpy as np
+import cupy as cp
 import matplotlib.pyplot as plt
 
 def save_images(images, path, n_rows=4):
     """
     Save a grid of images
     """
+    # Convert CuPy array to NumPy for matplotlib
+    images = cp.asnumpy(images)
     n_samples = len(images)
     n_cols = n_samples // n_rows
     
@@ -12,8 +14,8 @@ def save_images(images, path, n_rows=4):
     
     for i in range(n_samples):
         plt.subplot(n_rows, n_cols, i + 1)
-        image = images[i].transpose(1, 2, 0)  # CHW to HWC
-        image = (image + 1) / 2.0  # [-1, 1] to [0, 1]
+        image = images[i].transpose(1, 2, 0)
+        image = (image + 1) / 2.0
         plt.imshow(image)
         plt.axis('off')
     

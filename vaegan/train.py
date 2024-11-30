@@ -1,8 +1,7 @@
-import numpy as np
+import cupy as cp
 from dataset import load_mnist, get_batches
 from utils import save_images, create_directory
 from models.vaegan import VAEGAN
-import os
 import sys
 from datetime import datetime
 
@@ -45,17 +44,18 @@ def train_vaegan():
             # Train on batch
             losses = vaegan.train_step(batch)
             
-            # Record losses
-            epoch_d_losses.append(losses['discriminator_loss'])
-            epoch_g_losses.append(losses['generator_loss'])
-            epoch_e_losses.append(losses['encoder_loss'])
-            epoch_recon_losses.append(losses['reconstruction_loss'])
-            epoch_kl_losses.append(losses['kl_loss'])
+            # Record losses (convert to CPU for logging)
+            epoch_d_losses.append(cp.asnumpy(losses['discriminator_loss']))
+            epoch_g_losses.append(cp.asnumpy(losses['generator_loss']))
+            epoch_e_losses.append(cp.asnumpy(losses['encoder_loss']))
+            epoch_recon_losses.append(cp.asnumpy(losses['reconstruction_loss']))
+            epoch_kl_losses.append(cp.asnumpy(losses['kl_loss']))
             
             # Calculate average losses
-            avg_d_loss = np.mean(epoch_d_losses[-50:])  # Last 50 batches
-            avg_g_loss = np.mean(epoch_g_losses[-50:])
-            avg_e_loss = np.mean(epoch_e_losses[-50:])
+            avg_d_loss = cp.mean(cp.array(epoch_d_losses[-50:]))
+            avg_g_loss = cp.mean(cp.array(epoch_g_losses[-50:]))
+            avg_e_loss = cp.mean(cp.array(epoch_e_losses[-50:]))
+            
             # Calculate progress percentage
             progress = (batch_idx + 1) / total_batches
             bar_length = 20
@@ -67,9 +67,9 @@ def train_vaegan():
             
             # Create progress line
             progress_line = f'\r[{current_time}] [{bar}] {progress:.1%} '
-            progress_line += f'D_loss: {avg_d_loss:.4f} '
-            progress_line += f'G_loss: {avg_g_loss:.4f} '
-            progress_line += f'E_loss: {avg_e_loss:.4f}'
+            progress_line += f'D_loss: {cp.asnumpy(avg_d_loss):.4f} '
+            progress_line += f'G_loss: {cp.asnumpy(avg_g_loss):.4f} '
+            progress_line += f'E_loss: {cp.asnumpy(avg_e_loss):.4f}'
             
             # Print progress
             sys.stdout.write(progress_line)
@@ -78,11 +78,11 @@ def train_vaegan():
         print()
         # Print epoch statistics
         print(f"\nEpoch [{epoch+1}/{num_epochs}] Summary:")
-        print(f"D Loss: {np.mean(epoch_d_losses):.4f}")
-        print(f"G Loss: {np.mean(epoch_g_losses):.4f}")
-        print(f"E Loss: {np.mean(epoch_e_losses):.4f}")
-        print(f"Recon Loss: {np.mean(epoch_recon_losses):.4f}")
-        print(f"KL Loss: {np.mean(epoch_kl_losses):.4f}\n")
+        print(f"D Loss: {cp.mean(cp.array(epoch_d_losses)):.4f}")
+        print(f"G Loss: {cp.mean(cp.array(epoch_g_losses)):.4f}")
+        print(f"E Loss: {cp.mean(cp.array(epoch_e_losses)):.4f}")
+        print(f"Recon Loss: {cp.mean(cp.array(epoch_recon_losses)):.4f}")
+        print(f"KL Loss: {cp.mean(cp.array(epoch_kl_losses)):.4f}\n")
         
         # Save samples and reconstructions
         if (epoch + 1) % save_interval == 0:
@@ -98,7 +98,7 @@ def train_vaegan():
             reconstructions = vaegan.reconstruct(test_samples)
             
             # Save original and reconstructed images side by side
-            comparison = np.vstack([test_samples, reconstructions])
+            comparison = cp.vstack([test_samples, reconstructions])
             save_images(comparison, f'results/reconstructions_epoch_{epoch+1}.png')
             
             # Save model checkpoint

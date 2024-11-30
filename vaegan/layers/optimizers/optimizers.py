@@ -1,4 +1,4 @@
-import numpy as np
+import cupy as cp
 
 class Adam:
     def __init__(self, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8):
@@ -31,8 +31,8 @@ class Adam:
         """
         if not self.m:  # Initialize momentum and velocity on first update
             for key in params:
-                self.m[key] = np.zeros_like(params[key])
-                self.v[key] = np.zeros_like(params[key])
+                self.m[key] = cp.zeros_like(params[key])
+                self.v[key] = cp.zeros_like(params[key])
 
         self.t += 1
 
@@ -47,7 +47,7 @@ class Adam:
             self.m[key] = self.beta1 * self.m[key] + (1 - self.beta1) * grad
             
             # Update biased second raw moment estimate
-            self.v[key] = self.beta2 * self.v[key] + (1 - self.beta2) * np.square(grad)
+            self.v[key] = self.beta2 * self.v[key] + (1 - self.beta2) * cp.square(grad)
             
             # Compute bias-corrected first moment estimate
             m_hat = self.m[key] / (1 - self.beta1 ** self.t)
@@ -56,6 +56,6 @@ class Adam:
             v_hat = self.v[key] / (1 - self.beta2 ** self.t)
             
             # Update parameters
-            params[key] -= self.learning_rate * m_hat / (np.sqrt(v_hat) + self.epsilon)
+            params[key] -= self.learning_rate * m_hat / (cp.sqrt(v_hat) + self.epsilon)
 
         return params
