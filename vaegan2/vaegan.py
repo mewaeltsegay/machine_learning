@@ -96,7 +96,7 @@ if __name__ == "__main__":
     vaegan = VAEGAN()
     
     # Training parameters
-    batch_size = 64
+    batch_size = 128
     epochs = 100
     
     # Training loop
