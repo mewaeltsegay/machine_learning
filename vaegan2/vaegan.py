@@ -113,7 +113,7 @@ if __name__ == "__main__":
                 
             losses = vaegan.train_step(batch)
             
-            if i % 1000 == 0:
+            if i % 1 == 0:
                 print(f"Batch {i//batch_size}: ", end="")
                 for key, value in losses.items():
                     print(f"{key}: {value:.4f} ", end="")
