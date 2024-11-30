@@ -1,22 +1,22 @@
 import numpy as np
 
 class Decoder:
-    def __init__(self, latent_dim=100, output_shape=(28, 28, 1)):
+    def __init__(self, latent_dim=32, output_shape=(28, 28, 1)):
         self.latent_dim = latent_dim
         self.output_shape = output_shape
         self.initialize_parameters()
         
     def initialize_parameters(self):
-        # Dense: latent_dim -> 7*7*64
-        self.W1 = np.random.randn(self.latent_dim, 7 * 7 * 64) * 0.1
-        self.b1 = np.zeros((7 * 7 * 64,))
+        # Dense: latent_dim -> 7*7*32
+        self.W1 = np.random.randn(self.latent_dim, 7 * 7 * 32) * 0.02
+        self.b1 = np.zeros((7 * 7 * 32,))
         
-        # Deconv1: (7,7,64) -> (14,14,32)
-        self.W2 = np.random.randn(3, 3, 32, 64) * 0.1
-        self.b2 = np.zeros((32,))
+        # Deconv1: (7,7,32) -> (14,14,16)
+        self.W2 = np.random.randn(3, 3, 16, 32) * 0.02
+        self.b2 = np.zeros((16,))
         
-        # Deconv2: (14,14,32) -> (28,28,1)
-        self.W3 = np.random.randn(3, 3, 1, 32) * 0.1
+        # Deconv2: (14,14,16) -> (28,28,1)
+        self.W3 = np.random.randn(3, 3, 1, 16) * 0.02
         self.b3 = np.zeros((1,))
         
     def deconv2d(self, X, W, b, output_shape, stride=2, padding=1):
@@ -89,23 +89,18 @@ class Decoder:
         self.dense1_relu = self.relu(self.dense1)
         
         # Reshape
-        self.reshaped = self.dense1_relu.reshape(-1, 7, 7, 64)
+        self.reshaped = self.dense1_relu.reshape(-1, 7, 7, 32)
         
         # Deconv1 + ReLU
-        self.deconv1 = self.deconv2d(self.reshaped, self.W2, self.b2, (None, 14, 14, 32))
+        self.deconv1 = self.deconv2d(self.reshaped, self.W2, self.b2, (None, 14, 14, 16))
         self.deconv1_relu = self.relu(self.deconv1)
         
-        # Deconv2 + Sigmoid
-        # Ensure output_shape is (batch_size, 28, 28, 1)
+        # Deconv2 + Sigmoid (better for MNIST binary images)
         batch_size = z.shape[0]
-        output_shape = (batch_size, 28, 28, 1)
-        self.deconv2 = self.deconv2d(self.deconv1_relu, self.W3, self.b3, output_shape)
+        self.deconv2 = self.deconv2d(self.deconv1_relu, self.W3, self.b3, (batch_size, 28, 28, 1))
         self.output = self.sigmoid(self.deconv2)
         
-        # Verify output shape
-        assert self.output.shape[1:] == (28, 28, 1), f"Unexpected output shape: {self.output.shape}"
-        
-        return self.output 
+        return self.output
     
     def parameters(self):
         """Return a dictionary of all trainable parameters"""

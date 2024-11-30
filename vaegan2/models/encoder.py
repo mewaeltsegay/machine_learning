@@ -1,7 +1,7 @@
 import numpy as np
 
 class BatchNorm:
-    def __init__(self, num_features, eps=1e-5, momentum=0.9):
+    def __init__(self, num_features, eps=1e-5, momentum=0.1):
         self.eps = eps
         self.momentum = momentum
         self.running_mean = np.zeros(num_features)
@@ -28,27 +28,28 @@ class BatchNorm:
         return self.gamma.reshape(1, 1, 1, -1) * x_norm + self.beta.reshape(1, 1, 1, -1)
 
 class Encoder:
-    def __init__(self, input_shape=(28, 28, 1), latent_dim=100):
+    def __init__(self, input_shape=(28, 28, 1), latent_dim=32):
         self.input_shape = input_shape
         self.latent_dim = latent_dim
         self.initialize_parameters()
         
     def initialize_parameters(self):
-        # Conv1: (28,28,1) -> (14,14,32)
-        self.W1 = np.random.randn(3, 3, 1, 32) * np.sqrt(2.0 / (3 * 3 * 1))  # He initialization
-        self.b1 = np.zeros((32,))
-        self.bn1 = BatchNorm(32)
+        # Conv1: (28,28,1) -> (14,14,16)
+        self.W1 = np.random.randn(3, 3, 1, 16) * np.sqrt(2.0 / (3 * 3 * 1))
+        self.b1 = np.zeros((16,))
+        self.bn1 = BatchNorm(16)
         
-        # Conv2: (14,14,32) -> (7,7,64)
-        self.W2 = np.random.randn(3, 3, 32, 64) * np.sqrt(2.0 / (3 * 3 * 32))
-        self.b2 = np.zeros((64,))
-        self.bn2 = BatchNorm(64)
+        # Conv2: (14,14,16) -> (7,7,32)
+        self.W2 = np.random.randn(3, 3, 16, 32) * np.sqrt(2.0 / (3 * 3 * 16))
+        self.b2 = np.zeros((32,))
+        self.bn2 = BatchNorm(32)
         
         # Dense layers for mean and log_var
-        self.W_mean = np.random.randn(7 * 7 * 64, self.latent_dim) * np.sqrt(2.0 / (7 * 7 * 64))
+        flattened_dim = 7 * 7 * 32
+        self.W_mean = np.random.randn(flattened_dim, self.latent_dim) * np.sqrt(1.0 / flattened_dim)
         self.b_mean = np.zeros((self.latent_dim,))
         
-        self.W_logvar = np.random.randn(7 * 7 * 64, self.latent_dim) * np.sqrt(2.0 / (7 * 7 * 64))
+        self.W_logvar = np.random.randn(flattened_dim, self.latent_dim) * np.sqrt(1.0 / flattened_dim)
         self.b_logvar = np.zeros((self.latent_dim,))
 
     def conv2d(self, X, W, b, stride=2, padding=1):
@@ -93,7 +94,7 @@ class Encoder:
         
         return col
     
-    def leaky_relu(self, x, alpha=0.01):
+    def leaky_relu(self, x, alpha=0.2):
         return np.where(x > 0, x, alpha * x)
     
     def forward(self, X, training=True):
@@ -102,12 +103,12 @@ class Encoder:
         # Conv1 + BatchNorm + LeakyReLU
         self.conv1 = self.conv2d(X, self.W1, self.b1)
         self.bn1_out = self.bn1.forward(self.conv1, training)
-        self.conv1_act = self.leaky_relu(self.bn1_out)
+        self.conv1_act = self.leaky_relu(self.bn1_out, alpha=0.2)
         
         # Conv2 + BatchNorm + LeakyReLU
         self.conv2 = self.conv2d(self.conv1_act, self.W2, self.b2)
         self.bn2_out = self.bn2.forward(self.conv2, training)
-        self.conv2_act = self.leaky_relu(self.bn2_out)
+        self.conv2_act = self.leaky_relu(self.bn2_out, alpha=0.2)
         
         # Flatten
         self.flattened = self.conv2_act.reshape(X.shape[0], -1)
@@ -116,8 +117,12 @@ class Encoder:
         self.mean = np.dot(self.flattened, self.W_mean) + self.b_mean
         self.log_var = np.dot(self.flattened, self.W_logvar) + self.b_logvar
         
-        # Reparameterization trick with noise scaling
-        epsilon = np.random.randn(X.shape[0], self.latent_dim) * (0.1 if training else 0.0)
+        # Reparameterization trick with reduced noise for MNIST
+        if training:
+            epsilon = np.random.randn(X.shape[0], self.latent_dim) * 0.1
+        else:
+            epsilon = 0
+        
         self.z = self.mean + np.exp(0.5 * self.log_var) * epsilon
         
         return self.z, self.mean, self.log_var

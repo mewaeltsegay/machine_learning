@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import os
 
 class VAEGAN:
-    def __init__(self, input_shape=(28, 28, 1), latent_dim=100):
+    def __init__(self, input_shape=(28, 28, 1), latent_dim=32):
         self.input_shape = input_shape
         self.latent_dim = latent_dim
         
@@ -16,22 +16,22 @@ class VAEGAN:
         self.decoder = Decoder(latent_dim, input_shape)
         self.discriminator = Discriminator(input_shape)
         
-        # Adjusted learning rates
-        initial_lr = 0.0003  # Slightly higher learning rate
-        beta1 = 0.5
+        # MNIST-optimized learning rates
+        initial_lr = 1e-4  # Lower learning rate for MNIST
+        beta1 = 0.9  # Standard Adam beta1 for MNIST
         beta2 = 0.999
         
         self.encoder_optimizer = Adam(learning_rate=initial_lr, beta1=beta1, beta2=beta2)
-        self.decoder_optimizer = Adam(learning_rate=initial_lr*1.5, beta1=beta1, beta2=beta2)  # Faster generator
-        self.discriminator_optimizer = Adam(learning_rate=initial_lr*0.5, beta1=beta1, beta2=beta2)  # Slower discriminator
+        self.decoder_optimizer = Adam(learning_rate=initial_lr, beta1=beta1, beta2=beta2)
+        self.discriminator_optimizer = Adam(learning_rate=initial_lr, beta1=beta1, beta2=beta2)
         
-        # Adjusted loss weights
-        self.reconstruction_weight = 0.5  # Reduced reconstruction weight
-        self.kl_weight = 0.05  # Further reduced KL weight
-        self.adversarial_weight = 1.0  # Increased adversarial weight
+        # MNIST-specific loss weights
+        self.reconstruction_weight = 1.0  # Higher reconstruction weight for MNIST
+        self.kl_weight = 0.1  # Standard KL weight for MNIST
+        self.adversarial_weight = 0.1  # Lower adversarial weight for reconstruction
         
-        # Stronger regularization
-        self.l2_reg = 1e-4
+        # Lighter regularization for MNIST
+        self.l2_reg = 1e-6
         
     def adjust_learning_rate(self, epoch, initial_lr=0.0003, decay_factor=0.5, decay_epochs=20):
         """Implements smoother learning rate decay"""
@@ -67,39 +67,36 @@ class VAEGAN:
         z, mean, log_var = self.encoder.forward(batch, training)
         x_recon = self.decoder.forward(z, training)
         
-        # Train discriminator first
-        noise_level = 0.1 if training else 0  # Increased noise for stability
+        # Minimal noise for MNIST
+        noise_level = 0.01 if training else 0
         real_input = batch + np.random.normal(0, noise_level, batch.shape) if training else batch
         fake_input = x_recon + np.random.normal(0, noise_level, x_recon.shape) if training else x_recon
         
         real_output = self.discriminator.forward(real_input, training)
         fake_output = self.discriminator.forward(fake_input, training)
         
-        # Calculate losses with improved stability
+        # Calculate losses
         recon_loss = self.reconstruction_weight * self.reconstruction_loss(batch, x_recon)
         kl_loss = self.kl_weight * self.kl_loss(mean, log_var)
         reg_loss = self.l2_regularization()
         
-        # Improved label smoothing
-        real_labels = np.random.uniform(0.7, 1.0, real_output.shape) if training else 1.0
-        fake_labels = np.random.uniform(0.0, 0.3, fake_output.shape) if training else 0.0
+        # Simple label smoothing for MNIST
+        real_labels = 0.9 if training else 1.0
+        fake_labels = 0.0
         
-        # Discriminator loss with improved stability
-        disc_loss_real = -np.mean(np.log(real_output + 1e-7)) * np.mean(real_labels)
-        disc_loss_fake = -np.mean(np.log(1 - fake_output + 1e-7))
-        disc_loss = (disc_loss_real + disc_loss_fake) * self.adversarial_weight + reg_loss
+        # Standard GAN losses
+        disc_loss_real = -np.mean(np.log(real_output + 1e-8)) * real_labels
+        disc_loss_fake = -np.mean(np.log(1 - fake_output + 1e-8))
+        disc_loss = disc_loss_real + disc_loss_fake + reg_loss
         
-        # Generator loss with feature matching
-        gen_loss = (-np.mean(np.log(fake_output + 1e-7)) * self.adversarial_weight + 
-                   recon_loss + kl_loss + reg_loss)
+        # Focus on reconstruction for generator
+        gen_loss = (recon_loss + 
+                    kl_loss + 
+                    self.adversarial_weight * -np.mean(np.log(fake_output + 1e-8)) + 
+                    reg_loss)
         
         if training:
-            # Update discriminator less frequently than generator
-            if np.random.rand() < 0.8:  # 80% chance to update discriminator
-                # Implement parameter updates here
-                pass
-            
-            # Always update generator
+            # Update both networks equally for MNIST
             # Implement parameter updates here
             pass
         
@@ -144,24 +141,24 @@ if __name__ == "__main__":
     from tensorflow.keras.datasets import mnist
     import numpy as np
     
-    # Load and preprocess MNIST data with normalization
+    # MNIST-specific preprocessing
     (x_train, _), (x_test, _) = mnist.load_data()
     x_train = x_train.astype('float32') / 255.0
     x_train = np.expand_dims(x_train, axis=-1)
     
-    # Data standardization
-    x_train = (x_train - 0.5) / 0.5  # Scale to [-1, 1]
+    # Simple normalization for MNIST
+    x_train = x_train * 2.0 - 1.0  # Scale to [-1, 1]
     
     # Initialize VAEGAN
     vaegan = VAEGAN()
     
-    # Improved training parameters
-    batch_size = 64  # Smaller batch size for better gradient estimates
-    epochs = 100
-    sample_interval = 5
+    # MNIST-optimized parameters
+    batch_size = 128  # Standard batch size for MNIST
+    epochs = 50  # Fewer epochs needed for MNIST
+    sample_interval = 1  # Generate samples every epoch
     
-    # Training loop with improved scheduling
-    warmup_epochs = 3
+    # Simple learning rate schedule
+    warmup_epochs = 0  # No warmup needed for MNIST
     for epoch in range(epochs):
         print(f"Epoch {epoch+1}/{epochs}")
         
