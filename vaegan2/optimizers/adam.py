@@ -11,18 +11,21 @@ class Adam:
         self.t = 0
         
     def update(self, params, grads):
-        if not self.m:
+        """Update parameters using Adam optimization"""
+        if not self.m:  # Initialize momentum and velocity if first update
             for key in params:
                 self.m[key] = np.zeros_like(params[key])
                 self.v[key] = np.zeros_like(params[key])
         
         self.t += 1
+        lr_t = self.learning_rate * np.sqrt(1.0 - self.beta2**self.t) / (1.0 - self.beta1**self.t)
         
         for key in params:
+            # Update momentum and velocity
             self.m[key] = self.beta1 * self.m[key] + (1 - self.beta1) * grads[key]
             self.v[key] = self.beta2 * self.v[key] + (1 - self.beta2) * np.square(grads[key])
             
-            m_hat = self.m[key] / (1 - self.beta1**self.t)
-            v_hat = self.v[key] / (1 - self.beta2**self.t)
-            
-            params[key] -= self.learning_rate * m_hat / (np.sqrt(v_hat) + self.epsilon) 
+            # Update parameters
+            params[key] -= lr_t * self.m[key] / (np.sqrt(self.v[key]) + self.epsilon)
+        
+        return params

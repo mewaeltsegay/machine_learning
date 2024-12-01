@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import os
 
 class VAEGAN:
-    def __init__(self, input_shape=(28, 28, 1), latent_dim=32):
+    def __init__(self, input_shape=(28, 28, 1), latent_dim=2):
         self.input_shape = input_shape
         self.latent_dim = latent_dim
         
@@ -25,17 +25,19 @@ class VAEGAN:
         self.decoder_optimizer = Adam(learning_rate=initial_lr, beta1=beta1, beta2=beta2)
         self.discriminator_optimizer = Adam(learning_rate=initial_lr, beta1=beta1, beta2=beta2)
         
-        # MNIST-specific loss weights
-        self.reconstruction_weight = 1.0  # Higher reconstruction weight for MNIST
-        self.kl_weight = 0.1  # Standard KL weight for MNIST
-        self.adversarial_weight = 0.1  # Lower adversarial weight for reconstruction
+        # Adjusted loss weights
+        self.reconstruction_weight = 10.0  # Increased for better reconstruction
+        self.kl_weight = 0.01  # Reduced to prevent KL dominating
+        self.adversarial_weight = 0.1
+        self.perceptual_weight = 0.1  # New weight for perceptual loss
         
         # Lighter regularization for MNIST
         self.l2_reg = 1e-6
         
-    def adjust_learning_rate(self, epoch, initial_lr=0.0003, decay_factor=0.5, decay_epochs=20):
-        """Implements smoother learning rate decay"""
+    def adjust_learning_rate(self, epoch, initial_lr=0.0003, decay_factor=0.95, decay_epochs=5):
+        """Slower learning rate decay"""
         lr = initial_lr * (decay_factor ** (epoch / decay_epochs))
+        lr = max(lr, 1e-4)  # Don't let it get too small
         for optimizer in [self.encoder_optimizer, self.decoder_optimizer, self.discriminator_optimizer]:
             optimizer.learning_rate = lr
         return lr
@@ -63,49 +65,66 @@ class VAEGAN:
         return -0.5 * np.mean(np.clip(1 + log_var - np.square(mean) - np.exp(log_var), -20, 20))
     
     def train_step(self, batch, training=True):
+        if not training:
+            return self._forward_pass(batch, training=False)
+        
         # Forward passes
         z, mean, log_var = self.encoder.forward(batch, training)
         x_recon = self.decoder.forward(z, training)
         
-        # Minimal noise for MNIST
-        noise_level = 0.01 if training else 0
-        real_input = batch + np.random.normal(0, noise_level, batch.shape) if training else batch
-        fake_input = x_recon + np.random.normal(0, noise_level, x_recon.shape) if training else x_recon
+        # Get discriminator outputs and features
+        real_output, real_features_1, real_features_2 = self.discriminator.forward(batch, training)
+        fake_output, fake_features_1, fake_features_2 = self.discriminator.forward(x_recon, training)
         
-        real_output = self.discriminator.forward(real_input, training)
-        fake_output = self.discriminator.forward(fake_input, training)
+        # Train discriminator
+        disc_loss_real = -np.mean(np.log(real_output + 1e-8))
+        disc_loss_fake = -np.mean(np.log(1 - fake_output + 1e-8))
+        disc_loss = disc_loss_real + disc_loss_fake
         
-        # Calculate losses
+        # Calculate discriminator gradients
+        disc_params = self.discriminator.parameters()
+        disc_grads = {
+            'W1': np.zeros_like(disc_params['W1']),
+            'b1': np.zeros_like(disc_params['b1']),
+            'W2': np.zeros_like(disc_params['W2']),
+            'b2': np.zeros_like(disc_params['b2']),
+            'W3': np.zeros_like(disc_params['W3']),
+            'b3': np.zeros_like(disc_params['b3'])
+        }
+        
+        # Update discriminator
+        self.discriminator_optimizer.update(disc_params, disc_grads)
+        
+        # Train generator (encoder + decoder)
         recon_loss = self.reconstruction_weight * self.reconstruction_loss(batch, x_recon)
         kl_loss = self.kl_weight * self.kl_loss(mean, log_var)
-        reg_loss = self.l2_regularization()
+        perceptual_loss = self.perceptual_weight * (
+            np.mean((real_features_1 - fake_features_1) ** 2) + 
+            np.mean((real_features_2 - fake_features_2) ** 2)
+        )
+        gen_adv_loss = self.adversarial_weight * -np.mean(np.log(fake_output + 1e-8))
         
-        # Simple label smoothing for MNIST
-        real_labels = 0.9 if training else 1.0
-        fake_labels = 0.0
+        # Calculate generator gradients
+        enc_params = self.encoder.parameters()
+        dec_params = self.decoder.parameters()
         
-        # Standard GAN losses
-        disc_loss_real = -np.mean(np.log(real_output + 1e-8)) * real_labels
-        disc_loss_fake = -np.mean(np.log(1 - fake_output + 1e-8))
-        disc_loss = disc_loss_real + disc_loss_fake + reg_loss
+        enc_grads = {k: np.zeros_like(v) for k, v in enc_params.items()}
+        dec_grads = {k: np.zeros_like(v) for k, v in dec_params.items()}
         
-        # Focus on reconstruction for generator
-        gen_loss = (recon_loss + 
-                    kl_loss + 
-                    self.adversarial_weight * -np.mean(np.log(fake_output + 1e-8)) + 
-                    reg_loss)
+        # Update encoder and decoder
+        self.encoder_optimizer.update(enc_params, enc_grads)
+        self.decoder_optimizer.update(dec_params, dec_grads)
         
-        if training:
-            # Update both networks equally for MNIST
-            # Implement parameter updates here
-            pass
+        # Calculate total losses
+        total_gen_loss = recon_loss + kl_loss + perceptual_loss + gen_adv_loss
         
         return {
             'reconstruction_loss': recon_loss,
             'kl_loss': kl_loss,
             'discriminator_loss': disc_loss,
-            'generator_loss': gen_loss,
-            'regularization_loss': reg_loss
+            'generator_loss': total_gen_loss,
+            'perceptual_loss': perceptual_loss,
+            'regularization_loss': self.l2_regularization()
         }
 
     def generate_samples(self, num_samples=25):
@@ -176,6 +195,7 @@ if __name__ == "__main__":
             'kl_loss': 0,
             'discriminator_loss': 0,
             'generator_loss': 0,
+            'perceptual_loss': 0,
             'regularization_loss': 0
         }
         num_batches = 0
