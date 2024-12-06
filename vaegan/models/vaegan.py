@@ -1,4 +1,4 @@
-import numpy as np
+import cupy as cp
 from layers.Dense import Dense
 from layers.Conv2D import Conv2D
 from layers.activations import ReLU, LeakyReLU, Sigmoid, Tanh
@@ -28,14 +28,14 @@ class Encoder:
         self.fc_logvar = Dense(self.conv_out_size, latent_dim)
 
     def reparameterize(self, mu, logvar):
-        std = np.exp(0.5 * logvar)
-        eps = np.random.standard_normal(mu.shape)
+        std = cp.exp(0.5 * logvar)
+        eps = cp.random.standard_normal(mu.shape)
         return mu + eps * std
 
     def forward(self, x):
         # Ensure input is grayscale
         if x.shape[1] == 3:
-            x = np.mean(x, axis=1, keepdims=True)
+            x = cp.mean(x, axis=1, keepdims=True)
         
         x = self.conv1.forward(x)
         
@@ -108,8 +108,8 @@ class Encoder:
             logvar_grad: gradient w.r.t. log variance vector logvar
         """
         # Backpropagate through reparameterization
-        std = np.exp(0.5 * logvar_grad)
-        eps = np.random.standard_normal(mu_grad.shape)
+        std = cp.exp(0.5 * logvar_grad)
+        eps = cp.random.standard_normal(mu_grad.shape)
         
         # Gradients for mu and logvar
         d_mu = self.fc_mu.backward(mu_grad)
@@ -152,7 +152,7 @@ class Discriminator:
         
         # Ensure input is grayscale
         if x.shape[1] == 3:
-            x = np.mean(x, axis=1, keepdims=True)
+            x = cp.mean(x, axis=1, keepdims=True)
         
         
         x = self.conv1.forward(x)
@@ -283,7 +283,7 @@ class Decoder:
     def backward(self, output_grad):
         # Pad gradient if needed
         if output_grad.shape[2:] != (48, 48):  # If gradient is for cropped output
-            padded_grad = np.pad(
+            padded_grad = cp.pad(
                 output_grad,
                 ((0, 0), (0, 0), (0, 20), (0, 20)),
                 mode='constant'
@@ -378,14 +378,14 @@ class VAEGAN:
         Calculate pixel-wise reconstruction loss
         """
         if x.shape[1] == 3:  # If input is RGB, convert to grayscale
-            x = np.mean(x, axis=1, keepdims=True)
-        return np.mean(np.square(x_recon - x))
+            x = cp.mean(x, axis=1, keepdims=True)
+        return cp.mean(cp.square(x_recon - x))
 
     def kl_divergence(self, mu, logvar):
         """
         Calculate KL divergence between N(mu, var) and N(0, 1)
         """
-        return -0.5 * np.mean(1 + logvar - np.square(mu) - np.exp(logvar))
+        return -0.5 * cp.mean(1 + logvar - cp.square(mu) - cp.exp(logvar))
 
     def train_step(self, real_images):
         batch_size = real_images.shape[0]
@@ -397,8 +397,8 @@ class VAEGAN:
         real_preds = self.discriminator.forward(real_images)
         
         # Discriminator loss
-        d_loss_real = -np.mean(np.log(real_preds + 1e-8))
-        d_loss_fake = -np.mean(np.log(1 - fake_preds + 1e-8))
+        d_loss_real = -cp.mean(cp.log(real_preds + 1e-8))
+        d_loss_fake = -cp.mean(cp.log(1 - fake_preds + 1e-8))
         d_loss = d_loss_real + d_loss_fake
         
         # Update discriminator
@@ -406,12 +406,12 @@ class VAEGAN:
         
         # Generator (Decoder) loss
         # Generate new fake images
-        z = np.random.normal(0, 1, (batch_size, self.latent_dim))
+        z = cp.random.normal(0, 1, (batch_size, self.latent_dim))
         fake_images = self.decoder.forward(z)
         fake_preds = self.discriminator.forward(fake_images)
         
         # Compute generator loss
-        g_loss = -np.mean(np.log(fake_preds + 1e-8))
+        g_loss = -cp.mean(cp.log(fake_preds + 1e-8))
         
         # Backpropagate through discriminator to get gradients for fake images
         d_grad = self.discriminator.backward(fake_preds - real_preds)  # Get gradients w.r.t. fake images
@@ -467,7 +467,7 @@ class VAEGAN:
 
     def generate(self, n_samples):
         """Generate new images"""
-        z = np.random.normal(0, 1, (n_samples, self.latent_dim))
+        z = cp.random.normal(0, 1, (n_samples, self.latent_dim))
         return self.decoder.forward(z)
 
     def reconstruct(self, images):

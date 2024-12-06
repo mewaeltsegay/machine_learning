@@ -1,74 +1,37 @@
-import numpy as np
+import cupy as cp
 
 class ReLU:
     def __call__(self, x):
-        """
-        Rectified Linear Unit activation function
-        f(x) = max(0, x)
-        """
-        return np.maximum(0, x)
+        return cp.maximum(0, x)
     
     def derivative(self, x):
-        """
-        Derivative of ReLU
-        f'(x) = 1 if x > 0 else 0
-        """
-        return np.where(x > 0, 1.0, 0.0)
+        return cp.where(x > 0, 1.0, 0.0)
 
 class LeakyReLU:
     def __init__(self, alpha=0.01):
-        """
-        Leaky ReLU with customizable slope for negative values
-        
-        Args:
-            alpha (float): Slope for negative values (default: 0.01)
-        """
         self.alpha = alpha
     
     def __call__(self, x):
-        """
-        f(x) = x if x > 0 else alpha * x
-        """
-        return np.where(x > 0, x, self.alpha * x)
+        return cp.where(x > 0, x, self.alpha * x)
     
     def derivative(self, x):
-        """
-        f'(x) = 1 if x > 0 else alpha
-        """
-        return np.where(x > 0, 1.0, self.alpha)
+        return cp.where(x > 0, 1.0, self.alpha)
 
 class Sigmoid:
     def __call__(self, x):
-        """
-        Sigmoid activation function
-        f(x) = 1 / (1 + e^(-x))
-        """
-        # Clip x to avoid overflow
-        x = np.clip(x, -88.72, 88.72)  # prevents overflow in exp
-        return 1 / (1 + np.exp(-x))
+        x = cp.clip(x, -88.72, 88.72)
+        return 1 / (1 + cp.exp(-x))
     
     def derivative(self, x):
-        """
-        Derivative of sigmoid
-        f'(x) = f(x) * (1 - f(x))
-        """
         s = self.__call__(x)
         return s * (1 - s)
 
 class Tanh:
     def __call__(self, x):
-        """
-        Hyperbolic tangent activation function
-        f(x) = (e^x - e^(-x)) / (e^x + e^(-x))
-        """
-        return np.tanh(x)
+        return cp.tanh(x)
     
     def derivative(self, x):
-        """
-        Derivative of tanh
-        f'(x) = 1 - tanh^2(x)
-        """
-        return 1 - np.square(np.tanh(x))
+        return 1 - cp.square(cp.tanh(x))
 
 class Softmax:
     def __call__(self, x):
@@ -79,8 +42,8 @@ class Softmax:
         Note: Includes numerical stability improvements
         """
         # Subtract max for numerical stability
-        exp_x = np.exp(x - np.max(x, axis=-1, keepdims=True))
-        return exp_x / np.sum(exp_x, axis=-1, keepdims=True)
+        exp_x = cp.exp(x - cp.max(x, axis=-1, keepdims=True))
+        return exp_x / cp.sum(exp_x, axis=-1, keepdims=True)
     
     def derivative(self, x):
         """
@@ -104,10 +67,10 @@ class ELU:
         """
         f(x) = x if x > 0 else alpha * (e^x - 1)
         """
-        return np.where(x > 0, x, self.alpha * (np.exp(x) - 1))
+        return cp.where(x > 0, x, self.alpha * (cp.exp(x) - 1))
     
     def derivative(self, x):
         """
         f'(x) = 1 if x > 0 else alpha * e^x
         """
-        return np.where(x > 0, 1, self.alpha * np.exp(x))
+        return cp.where(x > 0, 1, self.alpha * cp.exp(x))

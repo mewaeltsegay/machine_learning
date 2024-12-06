@@ -1,4 +1,4 @@
-import numpy as np
+import cupy as cp
 
 class Dense:
     def __init__(self, input_dim, output_dim, activation=None):
@@ -15,9 +15,9 @@ class Dense:
         self.activation = activation
         
         # Initialize weights and biases using Xavier initialization
-        limit = np.sqrt(6 / (input_dim + output_dim))
-        self.weights = np.random.uniform(-limit, limit, (input_dim, output_dim))
-        self.biases = np.zeros(output_dim)
+        limit = cp.sqrt(6 / (input_dim + output_dim))
+        self.weights = cp.random.uniform(-limit, limit, (input_dim, output_dim))
+        self.biases = cp.zeros(output_dim)
         
         # Cache for backprop
         self.input = None
@@ -50,7 +50,7 @@ class Dense:
             raise ValueError(f"Expected input dimension {self.input_dim}, but got {input.shape[1]}")
             
         # Linear transformation
-        self.output_preactivation = np.dot(input, self.weights) + self.biases
+        self.output_preactivation = cp.dot(input, self.weights) + self.biases
         
         # Apply activation if specified
         if self.activation is not None:
@@ -75,11 +75,11 @@ class Dense:
             grad_output = grad_output * self.activation.derivative(self.output_preactivation)
         
         # Calculate gradients
-        self.d_weights = np.dot(self.input.T, grad_output)
-        self.d_biases = np.sum(grad_output, axis=0)
+        self.d_weights = cp.dot(self.input.T, grad_output)
+        self.d_biases = cp.sum(grad_output, axis=0)
         
         # Calculate gradient for the next layer
-        grad_input = np.dot(grad_output, self.weights.T)
+        grad_input = cp.dot(grad_output, self.weights.T)
         
         return grad_input
 
